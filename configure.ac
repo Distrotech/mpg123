@@ -26,8 +26,9 @@ dnl ############# Compiler and tools Checks
 
 AM_PROG_AS
 AC_PROG_CC
+AC_PROG_AWK
 AC_PROG_INSTALL
-AC_PROG_RANLIB
+AM_PROG_LIBTOOL
 
 AC_C_CONST
 AC_C_BIGENDIAN
@@ -136,23 +137,38 @@ AC_CHECK_FUNCS( setpriority )
 
 dnl ############## Library Checks
 
+
+# Dummy audio output plug-in is alway supported
+output_plugins="dummy"
+
+
 # Checks for libraries.
 AC_CHECK_LIB([m], [sqrt])
 AC_CHECK_LIB([mx], [powf])
 
 # Check for JACK
-PKG_CHECK_MODULES(JACK, jack, HAVE_JACK=yes, HAVE_JACK=no)
+PKG_CHECK_MODULES(JACK, jack, output_plugins="$output_plugins jack", HAVE_JACK="no")
+AC_SUBST( JACK_CFLAGS )
+AC_SUBST( JACK_LDFLAGS )
+AC_SUBST( JACK_LIBS )
 
 # Check for EsounD
-PKG_CHECK_MODULES(ESOUND, esound, HAVE_ESOUND=yes, HAVE_ESOUND=no)
+PKG_CHECK_MODULES(ESOUND, esound, output_plugins="$output_plugins esound", HAVE_ESOUND="no")
+AC_SUBST( ESOUND_CFLAGS )
+AC_SUBST( ESOUND_LDFLAGS )
+AC_SUBST( ESOUND_LIBS )
 
 # Check for SDL
-PKG_CHECK_MODULES(SDL, sdl, HAVE_SDL=yes, HAVE_SDL=no)
+PKG_CHECK_MODULES(SDL, sdl, output_plugins="$output_plugins sdl", HAVE_SDL="no")
+AC_SUBST( SDL_CFLAGS )
+AC_SUBST( SDL_LDFLAGS )
+AC_SUBST( SDL_LIBS )
+
 
 # Check for NAS
 AC_CHECK_LIB( [audio], [AuOpenServer],
 	[ AC_CHECK_HEADER( [audio/audiolib.h],
-		[ HAVE_NAS="yes" ],
+		[ output_plugins="$output_plugins nas" ],
 		[ AC_MSG_WARN([Found NAS library but NOT header files on your system]) ] )
 	]
 )
@@ -160,7 +176,7 @@ AC_CHECK_LIB( [audio], [AuOpenServer],
 # Check for PortAudio
 AC_CHECK_LIB( [portaudio], [Pa_Initialize],
 	[ AC_CHECK_HEADER( [portaudio.h],
-		[ HAVE_PORTAUDIO="yes" ],
+		[ output_plugins="$output_plugins portaudio" ],
 		[ AC_MSG_WARN([Found PortAudio library but NOT header files on your system]) ] )
 	]
 )
@@ -168,7 +184,7 @@ AC_CHECK_LIB( [portaudio], [Pa_Initialize],
 # Check for ALSA
 AC_CHECK_LIB( [asound], [snd_pcm_open],
 	[ AC_CHECK_HEADER( [alsa/asoundlib.h],
-		[ HAVE_ALSA="yes" ],
+		[ output_plugins="$output_plugins alsa" ],
 		[ AC_MSG_WARN([Found ALSA library but NOT header files on your system]) ] )
 	]
 )
@@ -183,13 +199,32 @@ AC_CHECK_HEADERS([stdlib.h string.h unistd.h sched.h sys/ioctl.h stdint.h limits
 
 # OSS Header files
 AC_CHECK_HEADERS([sys/soundcard.h linux/soundcard.h machine/soundcard.h])
+if test "x${ac_cv_header_sys_soundcard_h}" = "xyes" \
+	 -o "x${ac_cv_header_linux_soundcard_h}" = "xyes" \
+	 -o "x${ac_cv_header_machine_soundcard_h}" = "xyes";
+then
+	output_plugins="$output_plugins oss"
+fi
+
 
 # Sun Audio headers
 AC_CHECK_HEADERS([sun/audioio.h sys/audioio.h asm/audioio.h sys/audio.h])
+if test "x${ac_cv_header_sun_audioio_h}" = "xyes" \
+	 -o "x${ac_cv_header_sys_audioio_h}" = "xyes" \
+	 -o "x${ac_cv_header_asm_audioio_h}" = "xyes";
+then
+	output_plugins="$output_plugins sun"
+fi
 
-# Mac OS X
-AC_CHECK_HEADERS([AudioUnit/AudioUnit.h CoreServices/CoreServices.h AudioToolbox/AudioToolbox.h],
-					HAVE_MACOSXAUDIO=yes, HAVE_MACOSXAUDIO=no)
+
+# Mac OS X CoreAudio
+AC_CHECK_HEADERS([AudioUnit/AudioUnit.h CoreServices/CoreServices.h AudioToolbox/AudioToolbox.h])
+if test "x${ac_cv_header_AudioUnit_AudioUnit_h}" = "xyes" \
+	 -a "x${ac_cv_header_CoreServices_CoreServices_h}" = "xyes" \
+	 -a "x${ac_cv_header_AudioToolbox_AudioToolbox_h}" = "xyes";
+then
+	output_plugins="$output_plugins coreaudio"
+fi
 
 
 
@@ -339,6 +374,10 @@ CPU_TYPE_LIB="libcpu_$cpu_type.a"
 AC_SUBST( CPU_TYPE_LIB )
 
 
+dnl ############## Create list of plugins/modules to build
+
+MODULE_LIST=`echo "$output_plugins" | $AWK 'BEGIN{RS=" "}{printf("output_%s.la ",$1)}'`
+AC_SUBST(MODULE_LIST)
 
 
 dnl ############## Compiler Optimizations
@@ -391,155 +430,6 @@ fi
 
 AC_DEFINE_UNQUOTED(INDEX_SIZE, $seektable, [size of the frame index seek table])
 
-dnl ############## Audio Sub-system Settings
-
-# Choose audio subsystem based on Operating System
-case $target in
-  *-*-linux*)
-    if test "x$HAVE_ALSA" = "xyes" ; then
-        audio_system="alsa"
-    else
-        audio_system="oss"
-    fi
-  ;;
-  *-*-freebsd*)
-    audio_system="oss"
-  ;;
-  *-*-kfreebsd*)
-    audio_system="oss"
-  ;;
-  *-apple-darwin*)
-    audio_system="macosx"
-  ;;
-  *-*-solaris*)
-    audio_system="sun"
-  ;;
-  # esd has been assumed to be the one for cygwin, but plain OSS does it
-  # can even make mpg123 run "natively" with a cygwin.dll
-  *-*-cygwin*)
-    audio_system="oss"
-  ;;
-  *)
-  	audio_system="dummy"
-  ;;
-esac
-
-# Did user choose other audio type ?
-if test "x$with_audio" != "x"; then
-	audio_system=$with_audio
-fi
-
-
-
-AUDIO_OBJ="audio_$audio_system.\$(OBJEXT)"
-AUDIO_CFLAGS=""
-AUDIO_LIBS=""
-
-case $audio_system in
-  aix)	
-    # Currently unsupported in the new build system
-  ;;
-  alib)
-    # Currently unsupported in the new build system
-    AUDIO_CFLAGS="-I/opt/audio/include"
-  ;;
-  alsa)
-    if test "x$HAVE_ALSA" != "xyes" ; then
-  		AC_MSG_ERROR( ALSA is not available for audio output subsystem. )
-    fi
-    AUDIO_CFLAGS=""
-    AUDIO_LIBS="-lasound"
-  ;;
-  dummy) 
-    AC_MSG_WARN( Using dummy audio output. )
-  ;;
-  esd)
-  	if test "x$HAVE_ESOUND" != "xyes" ; then
-  		AC_MSG_ERROR( ESounD is not available for audio output subsystem. )
-  	fi
-    AUDIO_CFLAGS=$ESOUND_CFLAGS
-    AUDIO_LIBS=$ESOUND_LIBS
-  ;;
-  hp)
-    # Currently unsupported in the new build system
-  	AUDIO_CFLAGS="-I/opt/audio/include"
-  	AUDIO_LIBS="-L/opt/audio/lib -lAlib"
-  ;;
-  jack)
-  	if test "x$HAVE_JACK" != "xyes" ; then
-  		AC_MSG_ERROR( JACK is not available for audio output subsystem. )
-  	fi
-    AUDIO_CFLAGS=$JACK_CFLAGS
-    AUDIO_LIBS=$JACK_LIBS
-  ;;
-  macosx)
-  	if test "x$HAVE_MACOSXAUDIO" != "xyes" ; then
-  		AC_MSG_ERROR( Can't find Mac OS X's audio header files )
-  	fi
-  	AUDIO_LIBS="-framework AudioToolbox -framework AudioUnit -framework CoreServices"
-  ;;
-  mint)
-    # Currently unsupported in the new build system
-  ;;
-  nas)
-  	if test "x$HAVE_NAS" != "xyes" ; then
-  		AC_MSG_ERROR( NAS (Network Audio System) is not available. )
-  	fi
-    AUDIO_CFLAGS=""
-    AUDIO_LIBS="-laudio"
-  ;;
-  os2)
-    # Currently unsupported in the new build system
-  ;;
-  oss)
-    if test "x${ac_cv_header_sys_soundcard_h}" = "xyes" \
-         -o "x${ac_cv_header_linux_soundcard_h}" = "xyes" \
-         -o "x${ac_cv_header_machine_soundcard_h}" = "xyes";
-    then
-		AUDIO_CFLAGS=""
-		AUDIO_LIBS=""
-	else 
-		AC_MSG_ERROR([Can't find OSS header files])
-	fi
-  ;;
-  portaudio)
-  	if test "x$HAVE_PORTAUDIO" != "xyes" ; then
-  		AC_MSG_ERROR( PortAudio is not available. )
-  	fi
-    AUDIO_CFLAGS=""
-    AUDIO_LIBS="-lportaudio"
-  ;;
-  sdl)
-  	if test "x$HAVE_SDL" != "xyes" ; then
-  		AC_MSG_ERROR( SDL is not available for audio output subsystem. )
-  	fi
-    AUDIO_CFLAGS=$SDL_CFLAGS
-    AUDIO_LIBS=$SDL_LIBS
-  ;;
-  sgi)
-  # experimenting
-    AUDIO_CFLAGS=-DSGI
-    AUDIO_LIBS=-laudio
-  ;;
-  sun)
-    if test "x${ac_cv_header_sun_audioio_h}" = "xyes" \
-         -o "x${ac_cv_header_sys_audioio_h}" = "xyes" \
-         -o "x${ac_cv_header_asm_audioio_h}" = "xyes";
-    then
-		AUDIO_CFLAGS=""
-		AUDIO_LIBS=""
-	else 
-		AC_MSG_ERROR([Can't find Sun Audio header files])
-	fi
-  ;;
-  *)
-  	AC_MSG_ERROR([Unknown Audio sub-system '$audio_system'.])
-  ;;
-esac
-
-AC_SUBST(AUDIO_OBJ)
-AC_SUBST(AUDIO_CFLAGS)
-AC_SUBST(AUDIO_LIBS)
 
 
 
@@ -552,22 +442,23 @@ AC_OUTPUT([Makefile src/Makefile])
 dnl ############## Display Message
 
 echo "
-  $PACKAGE $VERSION
+  $PACKAGE_NAME $PACKAGE_VERSION
 
   Install path ............ $prefix
   CPU Optimisation......... $cpu_type
   Compiler Optimization ... $with_optimization
-  Audio output ............ $audio_system
   Gapless Support ......... $gapless
   Debugging ............... $debugging
   Seek table size ......... $seektable
+  Audio output plugins .... $output_plugins
+  Default output plugin ... ????
 "
-  
+ 
 if test "$debugging" = "enabled"; then
+	echo ""
 	echo "CFLAGS='$CFLAGS'"
 	echo "LIBS='$LIBS'"
-	echo "AUDIO_CFLAGS='$AUDIO_CFLAGS'"
-	echo "AUDIO_LIBS='$AUDIO_LIBS'"
+	echo "MODULE_LIST='$MODULE_LIST'"
 else
     echo "Next type 'make' and then 'make install'."
 fi

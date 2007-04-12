@@ -231,41 +231,6 @@ void init_output(void)
   }
 }
 
-static void set_output_h(char *a)
-{
-  if(ai.output <= 0)
-    ai.output = AUDIO_OUT_HEADPHONES;
-  else
-    ai.output |= AUDIO_OUT_HEADPHONES;
-}
-static void set_output_s(char *a)
-{
-  if(ai.output <= 0)
-    ai.output = AUDIO_OUT_INTERNAL_SPEAKER;
-  else
-    ai.output |= AUDIO_OUT_INTERNAL_SPEAKER;
-}
-static void set_output_l(char *a)
-{
-  if(ai.output <= 0)
-    ai.output = AUDIO_OUT_LINE_OUT;
-  else
-    ai.output |= AUDIO_OUT_LINE_OUT;
-}
-
-static void set_output (char *arg)
-{
-    switch (*arg) {
-        case 'h': set_output_h(arg); break;
-        case 's': set_output_s(arg); break;
-        case 'l': set_output_l(arg); break;
-        default:
-            error3("%s: Unknown argument \"%s\" to option \"%s\".\n",
-                prgName, arg, loptarg);
-            safe_exit(1);
-    }
-}
-
 void set_verbose (char *arg)
 {
     param.verbose++;
@@ -346,9 +311,6 @@ topt opts[] = {
 	{'g', "gain",        GLO_ARG | GLO_LONG, 0, &ai.gain,    0},
 	{'r', "rate",        GLO_ARG | GLO_LONG, 0, &param.force_rate,  0},
 	{0,   "8bit",        GLO_INT,  0, &param.force_8bit, 1},
-	{0,   "headphones",  0,                  set_output_h, 0,0},
-	{0,   "speaker",     0,                  set_output_s, 0,0},
-	{0,   "lineout",     0,                  set_output_l, 0,0},
 	{'o', "output",      GLO_ARG | GLO_CHAR, set_output, 0,  0},
 	{'f', "scale",       GLO_ARG | GLO_LONG, 0, &outscale,   0},
 	{'n', "frames",      GLO_ARG | GLO_LONG, 0, &numframes,  0},
@@ -1105,14 +1067,7 @@ static void usage(int err)  /* print syntax & exit */
 	fprintf(o,"   -c    check range violations         -y    DISABLE resync on errors\n");
 	fprintf(o,"   -b n  output buffer: n Kbytes [0]    -f n  change scalefactor [32768]\n");
 	fprintf(o,"   -r n  set/force samplerate [auto]    -g n  set audio hardware output gain\n");
-	fprintf(o,"   -os,-ol,-oh  output to built-in speaker,line-out connector,headphones\n");
-	#ifdef NAS
-	fprintf(o,"                                        -a d  set NAS server\n");
-	#elif defined(SGI)
-	fprintf(o,"                                        -a [1..4] set RAD device\n");
-	#else
 	fprintf(o,"                                        -a d  set audio device\n");
-	#endif
 	fprintf(o,"   -2    downsample 1:2 (22 kHz)        -4    downsample 1:4 (11 kHz)\n");
 	fprintf(o,"   -d n  play every n'th frame only     -h n  play every frame n times\n");
 	fprintf(o,"   -0    decode channel 0 (left) only   -1    decode channel 1 (right) only\n");
@@ -1162,9 +1117,9 @@ static void long_usage(int err)
 	fprintf(o," -Z     --random           full random play\n");
 
 	fprintf(o,"\noutput/processing options\n\n");
+	fprintf(o," -o <o> --output <o>       select audio output plugin\n");
 	fprintf(o," -a <d> --audiodevice <d>  select audio device\n");
 	fprintf(o," -s     --stdout           write raw audio to stdout (host native format)\n");
-	fprintf(o," -S     --STDOUT           play AND output stream (not implemented yet)\n");
 	fprintf(o," -w <f> --wav <f>          write samples as WAV file in <f> (- is stdout)\n");
 	fprintf(o,"        --au <f>           write samples as Sun AU file in <f> (- is stdout)\n");
 	fprintf(o,"        --cdr <f>          write samples as CDR file in <f> (- is stdout)\n");
@@ -1191,9 +1146,6 @@ static void long_usage(int err)
 	fprintf(o,"        --gapless          remove padding/junk added by encoder/decoder\n");
 	#endif
 	fprintf(o,"                           (experimental, needs Lame tag, layer 3 only)\n");
-	fprintf(o," -o h   --headphones       (aix/hp/sun) output on headphones\n");
-	fprintf(o," -o s   --speaker          (aix/hp/sun) output on speaker\n");
-	fprintf(o," -o l   --lineout          (aix/hp/sun) output to lineout\n");
 	fprintf(o," -b <n> --buffer <n>       set play buffer (\"output cache\")\n");
 
 	fprintf(o,"\nmisc options\n\n");

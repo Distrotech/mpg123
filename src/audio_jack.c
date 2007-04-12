@@ -52,7 +52,8 @@ static jack_handle_t* alloc_jack_handle()
 }
 
 
-static void free_jack_handle( jack_handle_t* handle )
+static void 
+free_jack_handle( jack_handle_t* handle )
 {
 	int i;
 	
@@ -106,7 +107,7 @@ process_callback( jack_nframes_t nframes, void *arg )
 static void
 shutdown_callback( void *arg )
 {
-//	jack_handle_t* handle = (jack_handle_t*)arg;
+/*	jack_handle_t* handle = (jack_handle_t*)arg; */
 
 	fprintf(stderr, "shutdown_callback()\n");
 
@@ -114,7 +115,7 @@ shutdown_callback( void *arg )
 
 /* crude way of automatically connecting up jack ports */
 /* 0 on error */
-int autoconnect_jack_ports( jack_handle_t* handle )
+static int autoconnect_jack_ports( jack_handle_t* handle )
 {
 	const char **all_ports;
 	unsigned int ch=0;
@@ -149,7 +150,7 @@ int autoconnect_jack_ports( jack_handle_t* handle )
 }
 
 
-int connect_jack_ports( jack_handle_t* handle, const char *dev ) 
+static int connect_jack_ports( jack_handle_t* handle, const char *dev ) 
 {
 	if (dev==NULL || strcmp(dev, "auto")==0) {
 		return autoconnect_jack_ports( handle );
@@ -162,7 +163,7 @@ int connect_jack_ports( jack_handle_t* handle, const char *dev )
 }
 
 
-int audio_open(struct audio_info_struct *ai)
+static int open_jack(struct audio_info_struct *ai)
 {
 	char client_name[255];
 	jack_handle_t *handle=NULL;
@@ -263,13 +264,15 @@ int audio_open(struct audio_info_struct *ai)
 
 
 /* Jack is in fact 32-bit floats only */
-int audio_get_formats(struct audio_info_struct *ai)
+static int
+get_formats_jack(struct audio_info_struct *ai)
 {
 	return AUDIO_FORMAT_SIGNED_16;
 }
 
 
-int audio_play_samples(struct audio_info_struct *ai, unsigned char *buf, int len)
+static int
+play_samples_jack(struct audio_info_struct *ai, unsigned char *buf, int len)
 {
 	int c,n = 0;
 	short* src = (short*)buf;
@@ -301,14 +304,15 @@ int audio_play_samples(struct audio_info_struct *ai, unsigned char *buf, int len
 	
 	
 	for(c=0; c<handle->channels; c++) {
-	
+		size_t len = 0;
+		
 		/* Convert samples from short to flat and put in temporary buffer*/
 		for(n=0; n<samples; n++) {
 			handle->tmp_buffer[n] = src[(n*handle->channels)+c] / 32768.0f;
 		}
 		
 		/* Copy temporary buffer into ring buffer*/
-		size_t len = jack_ringbuffer_write(handle->rb[c], (char*)handle->tmp_buffer, tmp_size);
+		len = jack_ringbuffer_write(handle->rb[c], (char*)handle->tmp_buffer, tmp_size);
 		if (len < tmp_size)
         {
 			error("audio_play_samples(): failed to write to ring ruffer.");
@@ -320,7 +324,8 @@ int audio_play_samples(struct audio_info_struct *ai, unsigned char *buf, int len
 	return len;
 }
 
-int audio_close(struct audio_info_struct *ai)
+static int
+close_jack(struct audio_info_struct *ai)
 {
 	jack_handle_t *handle = (jack_handle_t*)ai->handle;
 	
@@ -335,16 +340,33 @@ int audio_close(struct audio_info_struct *ai)
 	return 0;
 }
 
-void audio_queueflush(struct audio_info_struct *ai)
+static void
+flush_jack(struct audio_info_struct *ai)
 {
 	jack_handle_t *handle = (jack_handle_t*)ai->handle;
 	int c;
-
-	fprintf(stderr, "audio_queueflush().\n");
 
 	/* Reset the ring buffers*/
 	for(c=0; c<handle->channels; c++) {
 		jack_ringbuffer_reset(handle->rb[c]);
 	}
 }
+
+
+
+audio_output_t*
+init_audio_output(void)
+{
+	audio_output_t* ao = alloc_audio_output();
+	
+	// Set callbacks
+	ao->open = open_jack;
+	ao->close = close_jack;
+	
+	
+	return ao;
+}
+
+
+
 

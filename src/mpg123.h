@@ -164,7 +164,7 @@ struct frame {
     int down_sample;
     int header_change;
     int lay;
-    int (*do_layer)(struct frame *fr,int,struct audio_info_struct *);
+    int (*do_layer)(struct frame *fr,int,audio_output_t *);
     int error_protection;
     int bitrate_index;
     int sampling_frequency;
@@ -259,7 +259,7 @@ extern int buffer_fd[2];
 extern txfermem *buffermem;
 
 #ifndef NOXFERMEM
-extern void buffer_loop(struct audio_info_struct *ai,sigset_t *oldsigset);
+extern void buffer_loop(audio_output_t *ao,sigset_t *oldsigset);
 #endif
 
 /* ------ Declarations from "httpget.c" ------ */
@@ -272,7 +272,7 @@ extern char *httpauth;
 
 /* ------ Declarations from "common.c" ------ */
 
-extern void audio_flush(int, struct audio_info_struct *);
+extern void audio_flush(int, audio_output_t *);
 extern void (*catchsignal(int signum, void(*handler)()))();
 
 extern void print_header(struct frame *);
@@ -335,11 +335,11 @@ extern int open_stream(char *,int fd);
 extern void read_frame_init (struct frame* fr);
 extern int read_frame(struct frame *fr);
 /* why extern? */
-void prepare_audioinfo(struct frame *fr, struct audio_info_struct *nai);
+void prepare_audioinfo(struct frame *fr, audio_output_t *);
 extern int play_frame(int init,struct frame *fr);
-extern int do_layer3(struct frame *fr,int,struct audio_info_struct *);
-extern int do_layer2(struct frame *fr,int,struct audio_info_struct *);
-extern int do_layer1(struct frame *fr,int,struct audio_info_struct *);
+extern int do_layer3(struct frame *fr,int,audio_output_t *);
+extern int do_layer2(struct frame *fr,int,audio_output_t *);
+extern int do_layer1(struct frame *fr,int,audio_output_t *);
 extern void do_equalizer(real *bandPtr,int channel);
 
 /* synth_1to1 in optimize.h, one should also use opts for these here... */
@@ -380,18 +380,18 @@ extern int synth_ntom_set_step(long,long);
 
 extern int control_generic(struct frame *fr);
 
-extern int cdr_open(struct audio_info_struct *ai, char *ame);
-extern int au_open(struct audio_info_struct *ai, char *name);
-extern int wav_open(struct audio_info_struct *ai, char *wavfilename);
+extern int cdr_open(audio_output_t *, char *ame);
+extern int au_open(audio_output_t *, char *name);
+extern int wav_open(audio_output_t *, char *wavfilename);
 extern int wav_write(unsigned char *buf,int len);
 extern int cdr_close(void);
 extern int au_close(void);
 extern int wav_close(void);
 
-extern int au_open(struct audio_info_struct *ai, char *aufilename);
+extern int au_open(audio_output_t *, char *aufilename);
 extern int au_close(void);
 
-extern int cdr_open(struct audio_info_struct *ai, char *cdrfilename);
+extern int cdr_open(audio_output_t *, char *cdrfilename);
 extern int cdr_close(void);
 
 extern unsigned char *conv16to8;
@@ -401,8 +401,6 @@ extern real muls[27][64];
 extern real equalizer[2][32];
 extern real equalizer_sum[2][32];
 extern int equalizer_cnt;
-
-extern struct audio_name audio_val2name[];
 
 extern struct parameter param;
 

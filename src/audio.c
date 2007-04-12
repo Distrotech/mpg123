@@ -11,34 +11,43 @@
 #include "mpg123.h"
 #include "debug.h"
 
-void audio_info_struct_init(struct audio_info_struct *ai)
+audio_output_t*
+alloc_audio_output(void)
 {
-  ai->fn = -1;
-  ai->rate = -1;
-  ai->gain = -1;
-  ai->output = -1;
-  ai->handle = NULL;
-#ifdef ALSA
-  ai->alsa_format.format = -1;
-  ai->alsa_format.rate = -1;
-  ai->alsa_format.channels = -1;
-#endif
-  ai->device = NULL;
-  ai->channels = -1;
-  ai->format = -1;
+	audio_output_t* ao = malloc( sizeof( audio_output_t ) );
+	if (ao==NULL) error( "Failed to allocate memory for audio_output_t." );
+
+	// Initialise variables
+	ao->fn = -1;
+	ao->rate = -1;
+	ao->gain = -1;
+	ao->output = -1;
+	ao->handle = NULL;
+	ao->device = NULL;
+	ao->channels = -1;
+	ao->format = -1;
+	
+	// Set the callbacks to NULL
+	ao->open = NULL;
+	ao->get_formats = NULL;
+	ao->output_samples = NULL;
+	ao->flush = NULL;
+	ao->close = NULL;
+	
+	return ao
 }
 
 
-void audio_info_struct_dump(struct audio_info_struct *ai)
+void audio_output_struct_dump(audio_output_t *ao)
 {
-	fprintf(stderr, "ai->fn=%d\n", ai->fn);
-	fprintf(stderr, "ai->handle=%p\n", ai->handle);
-	fprintf(stderr, "ai->rate=%ld\n", ai->rate);
-	fprintf(stderr, "ai->gain=%ld\n", ai->gain);
-	fprintf(stderr, "ai->output=%d\n", ai->output);
-	fprintf(stderr, "ai->device='%s'\n", ai->device);
-	fprintf(stderr, "ai->channels=%d\n", ai->channels);
-	fprintf(stderr, "ai->format=%d\n", ai->format);
+	fprintf(stderr, "ao->fn=%d\n", ao->fn);
+	fprintf(stderr, "ao->handle=%p\n", ao->handle);
+	fprintf(stderr, "ao->rate=%ld\n", ao->rate);
+	fprintf(stderr, "ao->gaon=%ld\n", ao->gaon);
+	fprintf(stderr, "ao->output=%d\n", ao->output);
+	fprintf(stderr, "ao->device='%s'\n", ao->device);
+	fprintf(stderr, "ao->channels=%d\n", ao->channels);
+	fprintf(stderr, "ao->format=%d\n", ao->format);
 }
 
 
@@ -46,7 +55,7 @@ void audio_info_struct_dump(struct audio_info_struct *ai)
 #define NUM_ENCODINGS 6
 #define NUM_RATES 10
 
-struct audio_name audio_val2name[NUM_ENCODINGS+1] = {
+struct audio_format_name audio_val2name[NUM_ENCODINGS+1] = {
  { AUDIO_FORMAT_SIGNED_16  , "signed 16 bit" , "s16 " } ,
  { AUDIO_FORMAT_UNSIGNED_16, "unsigned 16 bit" , "u16 " } ,  
  { AUDIO_FORMAT_UNSIGNED_8 , "unsigned 8 bit" , "u8  " } ,
@@ -80,11 +89,11 @@ static int encodings[NUM_ENCODINGS] = {
 
 static char capabilities[NUM_CHANNELS][NUM_ENCODINGS][NUM_RATES];
 
-void audio_capabilities(struct audio_info_struct *ai)
+void audio_capabilities(audio_output_t *ao)
 {
 	int fmts;
 	int i,j,k,k1=NUM_RATES-1;
-	struct audio_info_struct ai1 = *ai;
+	struct audio_info_struct ao1 = *ao;
 
         if (param.outmode != DECODE_AUDIO) {
 		memset(capabilities,1,sizeof(capabilities));
@@ -97,17 +106,17 @@ void audio_capabilities(struct audio_info_struct *ai)
 		k1 = NUM_RATES;
 	}
 
-	/* if audio_open fails, the device is just not capable of anything... */
-	if(audio_open(&ai1) < 0) {
+	/* if audio_open faols, the device is just not capable of anything... */
+	if(audio_open(&ao1) < 0) {
 		perror("audio");
 	}
 	else
 	{
 		for(i=0;i<NUM_CHANNELS;i++) {
 			for(j=0;j<NUM_RATES;j++) {
-				ai1.channels = channels[i];
-				ai1.rate = rates[j];
-				fmts = audio_get_formats(&ai1);
+				ao1.channels = channels[i];
+				ao1.rate = rates[j];
+				fmts = audio_get_formats(&ao1);
 				if(fmts < 0)
 					continue;
 				for(k=0;k<NUM_ENCODINGS;k++) {
@@ -116,7 +125,7 @@ void audio_capabilities(struct audio_info_struct *ai)
 				}
 			}
 		}
-		audio_close(&ai1);
+		audio_close(&ao1);
 	}
 
 	if(param.verbose > 1) {
@@ -155,16 +164,16 @@ static int rate2num(int r)
 }
 
 
-static int audio_fit_cap_helper(struct audio_info_struct *ai,int rn,int f0,int f2,int c)
+static int audio_fit_cap_helper(struct audio_info_struct *ao,int rn,int f0,int f2,int c)
 {
 	int i;
 
         if(rn >= 0) {
                 for(i=f0;i<f2;i++) {
                         if(capabilities[c][i][rn]) {
-                                ai->rate = rates[rn];
-                                ai->format = encodings[i];
-                                ai->channels = channels[c];
+                                ao->rate = rates[rn];
+                                ao->format = encodings[i];
+                                ao->channels = channels[c];
 				return 1;
                         }
                 }
@@ -178,7 +187,7 @@ static int audio_fit_cap_helper(struct audio_info_struct *ai,int rn,int f0,int f
  * r=rate of stream
  * return 0 on error
  */
-int audio_fit_capabilities(struct audio_info_struct *ai,int c,int r)
+int audio_fit_capabilities(struct audio_info_struct *ao,int c,int r)
 {
 	int rn;
 	int f0=0;
@@ -196,9 +205,9 @@ int audio_fit_capabilities(struct audio_info_struct *ai,int c,int r)
 
 	if(param.force_rate) {
 		rn = rate2num(param.force_rate);
-		if(audio_fit_cap_helper(ai,rn,f0,2,c))
+		if(audio_fit_cap_helper(ao,rn,f0,2,c))
 			return 1;
-		if(audio_fit_cap_helper(ai,rn,2,NUM_ENCODINGS,c))
+		if(audio_fit_cap_helper(ao,rn,2,NUM_ENCODINGS,c))
 			return 1;
 
 		if(c == 1 && !param.force_stereo)
@@ -206,9 +215,9 @@ int audio_fit_capabilities(struct audio_info_struct *ai,int c,int r)
 		else if(c == 0 && !param.force_mono)
 			c = 1;
 
-		if(audio_fit_cap_helper(ai,rn,f0,2,c))
+		if(audio_fit_cap_helper(ao,rn,f0,2,c))
 			return 1;
-		if(audio_fit_cap_helper(ai,rn,2,NUM_ENCODINGS,c))
+		if(audio_fit_cap_helper(ao,rn,2,NUM_ENCODINGS,c))
 			return 1;
 
 		error("No supported rate found!");
@@ -216,23 +225,23 @@ int audio_fit_capabilities(struct audio_info_struct *ai,int c,int r)
 	}
 
 	rn = rate2num(r>>0);
-	if(audio_fit_cap_helper(ai,rn,f0,2,c))
+	if(audio_fit_cap_helper(ao,rn,f0,2,c))
 		return 1;
 	rn = rate2num(r>>1);
-	if(audio_fit_cap_helper(ai,rn,f0,2,c))
+	if(audio_fit_cap_helper(ao,rn,f0,2,c))
 		return 1;
 	rn = rate2num(r>>2);
-	if(audio_fit_cap_helper(ai,rn,f0,2,c))
+	if(audio_fit_cap_helper(ao,rn,f0,2,c))
 		return 1;
 
 	rn = rate2num(r>>0);
-	if(audio_fit_cap_helper(ai,rn,2,NUM_ENCODINGS,c))
+	if(audio_fit_cap_helper(ao,rn,2,NUM_ENCODINGS,c))
 		return 1;
 	rn = rate2num(r>>1);
-	if(audio_fit_cap_helper(ai,rn,2,NUM_ENCODINGS,c))
+	if(audio_fit_cap_helper(ao,rn,2,NUM_ENCODINGS,c))
 		return 1;
 	rn = rate2num(r>>2);
-	if(audio_fit_cap_helper(ai,rn,2,NUM_ENCODINGS,c))
+	if(audio_fit_cap_helper(ao,rn,2,NUM_ENCODINGS,c))
 		return 1;
 
 
@@ -242,23 +251,23 @@ int audio_fit_capabilities(struct audio_info_struct *ai,int c,int r)
                 c = 1;
 
         rn = rate2num(r>>0);
-        if(audio_fit_cap_helper(ai,rn,f0,2,c))
+        if(audio_fit_cap_helper(ao,rn,f0,2,c))
                 return 1;
         rn = rate2num(r>>1);
-        if(audio_fit_cap_helper(ai,rn,f0,2,c))
+        if(audio_fit_cap_helper(ao,rn,f0,2,c))
                 return 1;
         rn = rate2num(r>>2);
-        if(audio_fit_cap_helper(ai,rn,f0,2,c))
+        if(audio_fit_cap_helper(ao,rn,f0,2,c))
                 return 1;
 
         rn = rate2num(r>>0);
-        if(audio_fit_cap_helper(ai,rn,2,NUM_ENCODINGS,c))
+        if(audio_fit_cap_helper(ao,rn,2,NUM_ENCODINGS,c))
                 return 1;
         rn = rate2num(r>>1);
-        if(audio_fit_cap_helper(ai,rn,2,NUM_ENCODINGS,c))
+        if(audio_fit_cap_helper(ao,rn,2,NUM_ENCODINGS,c))
                 return 1;
         rn = rate2num(r>>2);
-        if(audio_fit_cap_helper(ai,rn,2,NUM_ENCODINGS,c))
+        if(audio_fit_cap_helper(ao,rn,2,NUM_ENCODINGS,c))
                 return 1;
 
 	error("No supported rate found!");
@@ -275,3 +284,4 @@ char *audio_encoding_name(int format)
 	}
 	return "Unknown";
 }
+

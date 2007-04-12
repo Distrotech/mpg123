@@ -90,7 +90,7 @@ int audio_open(struct audio_info_struct *ai)
 	
 		/* Initialise FIFO */
 		ringbuffer_len = ai->rate * FIFO_DURATION * SAMPLE_SIZE *ai->channels;
-		debug2( "Allocating %d byte ring-buffer (%f seconds)", ringbuffer_len, (float)FIFO_DURATION);
+		debug2( "Allocating %d byte ring-buffer (%f seconds)", (int)ringbuffer_len, (float)FIFO_DURATION);
 		sfifo_init( &fifo, ringbuffer_len );
 									   
 	}
